@@ -285,31 +285,76 @@ static float GetCurrentAspectRatioFloat(bool is_progressive)
 	return ars[static_cast<u32>(GSConfig.AspectRatio) + (3u * (is_progressive && GSConfig.AspectRatio == AspectRatioType::RAuto4_3_3_2))];
 }
 
-static GSVector4 CalculateDrawDstRect(s32 window_width, s32 window_height, const GSVector4i& src_rect, const GSVector2i& src_size, GSDisplayAlignment alignment, bool flip_y, bool is_progressive)
+static u32 GetMAGH(const GSPrivRegSet* regs)
+{
+	return std::max(regs->DISP[0].DISPLAY.MAGH, regs->DISP[1].DISPLAY.MAGH);
+}
+
+static float CalculateDisplayAspectRatio(int width, int height, u32 magh, GSVideoMode video_mode, bool is_interlaced, bool is_pal_optimized)
+{
+	// divisor is the MAGH value (plus one) corresponding to the reference pixel aspect ratio
+	float reference_pixel_ar;
+	int divisor;
+	const float ntsc_rec_601_par = 10.0f / 11.0f;
+	const float pal_rec_601_par = 59.0f / 54.0f;
+	switch(video_mode)
+	{
+	case GSVideoMode::HDTV_1080I:
+	case GSVideoMode::HDTV_720P:
+		reference_pixel_ar = 1;
+		divisor = 1;
+		break;
+	case GSVideoMode::SDTV_480P:
+		reference_pixel_ar = ntsc_rec_601_par;
+		divisor = 2; // 480p has half as many VCLKs per line
+		break;
+	case GSVideoMode::NTSC:
+		reference_pixel_ar = ntsc_rec_601_par;
+		divisor = 4;
+		break;
+	case GSVideoMode::PAL:
+		// if this isn't a good enough solution, delete this case and default to 4:3
+		reference_pixel_ar = is_pal_optimized ? pal_rec_601_par : ntsc_rec_601_par;
+		divisor = 4;
+		break;
+	default:
+		return 4.0f / 3.0f;
+	}
+	float pixel_ar = reference_pixel_ar * (magh + 1.0f) / divisor;
+	// non-interlaced pixel aspect ratios are half of what they would be in interlaced mode
+	if ((video_mode == GSVideoMode::NTSC || video_mode == GSVideoMode::PAL) && !is_interlaced)
+		pixel_ar /= 2.0f;
+	return (static_cast<float>(width) / height) * pixel_ar;
+}
+
+static GSVector4 CalculateDrawDstRect(s32 window_width, s32 window_height, const GSVector4i& src_rect, const GSVector2i& src_size,
+	GSDisplayAlignment alignment, bool flip_y, u32 magh, GSVideoMode video_mode, bool is_interlaced)
 {
 	const float f_width = static_cast<float>(window_width);
 	const float f_height = static_cast<float>(window_height);
 	const float clientAr = f_width / f_height;
 
-	float targetAr = clientAr;
-	if (EmuConfig.CurrentAspectRatio == AspectRatioType::RAuto4_3_3_2)
-	{
-		if (is_progressive)
-			targetAr = 3.0f / 2.0f;
-		else
-			targetAr = 4.0f / 3.0f;
+	float display_ar = CalculateDisplayAspectRatio(src_rect.width(), src_rect.height(), magh, video_mode, is_interlaced,
+		src_size.y / g_gs_renderer->GetUpscaleMultiplier() > 480.0f);
+	float targetAr;
+	switch(EmuConfig.CurrentAspectRatio) {
+	case AspectRatioType::RAuto4_3_3_2:
+		// TODO create a proper "square pixels" option
+		targetAr = static_cast<float>(src_rect.width()) / src_rect.height();
+		break;
+	case AspectRatioType::R4_3:
+		targetAr = display_ar;
+		break;
+	case AspectRatioType::R16_9:
+		targetAr = display_ar * 4.0f / 3.0f;
+		break;
+	default:
+		targetAr = clientAr;
 	}
-	else if (EmuConfig.CurrentAspectRatio == AspectRatioType::R4_3)
-	{
-		targetAr = 4.0f / 3.0f;
-	}
-	else if (EmuConfig.CurrentAspectRatio == AspectRatioType::R16_9)
-		targetAr = 16.0f / 9.0f;
-
-	const float crop_adjust = (static_cast<float>(src_rect.width()) / static_cast<float>(src_size.x)) /
-		(static_cast<float>(src_rect.height()) / static_cast<float>(src_size.y));
-
-	const double arr = (targetAr * crop_adjust) / clientAr;
+	// 1080i and 720p are widescreen only, so override config
+	if (video_mode == GSVideoMode::HDTV_1080I || video_mode == GSVideoMode::HDTV_720P)
+		targetAr = display_ar;
+	const double arr = targetAr / clientAr;
 	float target_width = f_width;
 	float target_height = f_height;
 	if (arr < 1)
@@ -612,8 +657,8 @@ void GSRenderer::VSync(u32 field, bool registers_written, bool idle_frame)
 		src_rect = CalculateDrawSrcRect(current, m_real_size);
 		src_uv = GSVector4(src_rect) / GSVector4(current->GetSize()).xyxy();
 		draw_rect = CalculateDrawDstRect(g_gs_device->GetWindowWidth(), g_gs_device->GetWindowHeight(),
-			src_rect, current->GetSize(), s_display_alignment, g_gs_device->UsesLowerLeftOrigin(),
-			GetVideoMode() == GSVideoMode::SDTV_480P);
+			src_rect, current->GetSize(), s_display_alignment, g_gs_device->UsesLowerLeftOrigin(), GetMAGH(m_regs),
+			GetVideoMode(), isReallyInterlaced());
 		s_last_draw_rect = draw_rect;
 
 		if (GSConfig.CASMode != GSCASMode::Disabled)
@@ -877,7 +922,7 @@ void GSRenderer::PresentCurrentFrame()
 			const GSVector4 src_uv(GSVector4(src_rect) / GSVector4(current->GetSize()).xyxy());
 			const GSVector4 draw_rect(CalculateDrawDstRect(g_gs_device->GetWindowWidth(), g_gs_device->GetWindowHeight(),
 				src_rect, current->GetSize(), s_display_alignment, g_gs_device->UsesLowerLeftOrigin(),
-				GetVideoMode() == GSVideoMode::SDTV_480P));
+				GetMAGH(m_regs), GetVideoMode(), isReallyInterlaced()));
 			s_last_draw_rect = draw_rect;
 
 			const u64 current_time = Common::Timer::GetCurrentValue();
@@ -915,14 +960,19 @@ void GSSetDisplayAlignment(GSDisplayAlignment alignment)
 
 bool GSRenderer::BeginCapture(std::string filename, const GSVector2i& size)
 {
+	// TODO crop the video in accordance with the user's crop settings
+	const GSVector2i internal_resolution = GetInternalResolution();
 	const GSVector2i capture_resolution = (size.x != 0 && size.y != 0) ?
 											  size :
 											  (GSConfig.VideoCaptureAutoResolution ?
-													  GetInternalResolution() :
+													  internal_resolution :
 													  GSVector2i(GSConfig.VideoCaptureWidth, GSConfig.VideoCaptureHeight));
 
+	float upscale = GetUpscaleMultiplier();
+	float vertical_res = internal_resolution.y / upscale;
 	return GSCapture::BeginCapture(GetTvRefreshRate(), capture_resolution,
-		GetCurrentAspectRatioFloat(GetVideoMode() == GSVideoMode::SDTV_480P),
+		CalculateDisplayAspectRatio(internal_resolution.x, internal_resolution.y, GetMAGH(m_regs), GetVideoMode(),
+			isReallyInterlaced(), vertical_res > 480.0f),
 		std::move(filename));
 }
 
@@ -956,16 +1006,16 @@ bool GSRenderer::SaveSnapshotToMemory(u32 window_width, u32 window_height, bool 
 	const GSVector4i src_rect(CalculateDrawSrcRect(current, m_real_size));
 	const GSVector4 src_uv(GSVector4(src_rect) / GSVector4(current->GetSize()).xyxy());
 
-	const bool is_progressive = (GetVideoMode() == GSVideoMode::SDTV_480P);
 	GSVector4 draw_rect;
 	if (window_width == 0 || window_height == 0)
 	{
 		if (apply_aspect)
 		{
 			// use internal resolution of the texture
-			const float aspect = GetCurrentAspectRatioFloat(is_progressive);
 			const int tex_width = current->GetWidth();
 			const int tex_height = current->GetHeight();
+			const float aspect = CalculateDisplayAspectRatio(src_rect.width(), src_rect.height(), GetMAGH(m_regs), GetVideoMode(),
+				isReallyInterlaced(), tex_height / GetUpscaleMultiplier() > 480.0f);
 
 			// expand to the larger dimension
 			const float tex_aspect = static_cast<float>(tex_width) / static_cast<float>(tex_height);
@@ -983,7 +1033,7 @@ bool GSRenderer::SaveSnapshotToMemory(u32 window_width, u32 window_height, bool 
 	else
 	{
 		draw_rect = CalculateDrawDstRect(window_width, window_height, src_rect, current->GetSize(),
-			GSDisplayAlignment::LeftOrTop, false, is_progressive);
+			GSDisplayAlignment::LeftOrTop, false, GetMAGH(m_regs), GetVideoMode(), isReallyInterlaced());
 	}
 	const u32 draw_width = static_cast<u32>(draw_rect.z - draw_rect.x);
 	const u32 draw_height = static_cast<u32>(draw_rect.w - draw_rect.y);
