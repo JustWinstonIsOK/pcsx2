@@ -52,6 +52,8 @@ public:
 	virtual float GetTextureScaleFactor() { return 1.0f; }
 	GSVector2i GetInternalResolution();
 	float GetModXYOffset();
+	static float CalculateDisplayAspectRatio(int width, int height, GSPrivRegSet* regs, GSVideoMode video_mode,
+		bool is_interlaced, bool is_pal_optimized);
 
 	virtual GSTexture* LookupPaletteSource(u32 CBP, u32 CPSM, u32 CBW, GSVector2i& offset, float* scale, const GSVector2i& size);
 

@@ -548,15 +548,14 @@ void Pcsx2Config::CpuOptions::LoadSave(SettingsWrapper& wrap)
 }
 
 const char* Pcsx2Config::GSOptions::AspectRatioNames[] = {
-	"Stretch",
-	"Auto 4:3/3:2",
 	"4:3",
 	"16:9",
+	"Square Pixels",
+	"Stretch",
 	nullptr};
 
 const char* Pcsx2Config::GSOptions::FMVAspectRatioSwitchNames[] = {
 	"Off",
-	"Auto 4:3/3:2",
 	"4:3",
 	"16:9",
 	nullptr};

@@ -802,22 +802,25 @@ void VMManager::RequestDisplaySize(float scale /*= 0.0f*/)
 	if (iwidth <= 0 || iheight <= 0)
 		return;
 
+	GSRenderer* gs = g_gs_renderer.get();
+	GSVideoMode video_mode = gs->GetVideoMode();
+	float upscale_multiplier = gs->GetUpscaleMultiplier();
+
+	float target_ar = GSRenderer::CalculateDisplayAspectRatio(iwidth, iheight, gs->m_regs, video_mode,
+		gs->isReallyInterlaced(), iheight / upscale_multiplier > 480.0f);
 	// scale x not y for aspect ratio
 	float x_scale;
 	switch (GSConfig.AspectRatio)
 	{
-		case AspectRatioType::RAuto4_3_3_2:
-			if (GSgetDisplayMode() == GSVideoMode::SDTV_480P)
-				x_scale = (3.0f / 2.0f) / (static_cast<float>(iwidth) / static_cast<float>(iheight));
-			else
-				x_scale = (4.0f / 3.0f) / (static_cast<float>(iwidth) / static_cast<float>(iheight));
-			break;
 		case AspectRatioType::R4_3:
-			x_scale = (4.0f / 3.0f) / (static_cast<float>(iwidth) / static_cast<float>(iheight));
+			x_scale = target_ar / (static_cast<float>(iwidth) / static_cast<float>(iheight));
 			break;
 		case AspectRatioType::R16_9:
-			x_scale = (16.0f / 9.0f) / (static_cast<float>(iwidth) / static_cast<float>(iheight));
+			if (video_mode != GSVideoMode::HDTV_1080I && video_mode != GSVideoMode::HDTV_720P)
+				target_ar *= 4.0f / 3.0f;
+			x_scale = target_ar / (static_cast<float>(iwidth) / static_cast<float>(iheight));
 			break;
+		case AspectRatioType::SquarePixels:
 		case AspectRatioType::Stretch:
 		default:
 			x_scale = 1.0f;
@@ -830,7 +833,7 @@ void VMManager::RequestDisplaySize(float scale /*= 0.0f*/)
 	if (scale != 0.0f)
 	{
 		// unapply the upscaling, then apply the scale
-		scale = (1.0f / GSConfig.UpscaleMultiplier) * scale;
+		scale = (1.0f / upscale_multiplier) * scale;
 		width *= scale;
 		height *= scale;
 	}

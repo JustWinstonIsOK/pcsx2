@@ -196,17 +196,16 @@ enum class VsyncMode
 
 enum class AspectRatioType : u8
 {
-	Stretch,
-	RAuto4_3_3_2,
 	R4_3,
 	R16_9,
+	SquarePixels,
+	Stretch,
 	MaxCount
 };
 
 enum class FMVAspectRatioSwitchType : u8
 {
 	Off,
-	RAuto4_3_3_2,
 	R4_3,
 	R16_9,
 	MaxCount
@@ -572,7 +571,7 @@ struct Pcsx2Config
 		static constexpr float DEFAULT_FRAME_RATE_NTSC = 59.94f;
 		static constexpr float DEFAULT_FRAME_RATE_PAL = 50.00f;
 
-		static constexpr AspectRatioType DEFAULT_ASPECT_RATIO = AspectRatioType::RAuto4_3_3_2;
+		static constexpr AspectRatioType DEFAULT_ASPECT_RATIO = AspectRatioType::R4_3;
 		static constexpr GSInterlaceMode DEFAULT_INTERLACE_MODE = GSInterlaceMode::Automatic;
 
 		static constexpr int DEFAULT_VIDEO_CAPTURE_BITRATE = 6000;
@@ -1177,7 +1176,7 @@ struct Pcsx2Config
 	std::string CurrentBlockdump;
 	std::string CurrentIRX;
 	std::string CurrentGameArgs;
-	AspectRatioType CurrentAspectRatio = AspectRatioType::RAuto4_3_3_2;
+	AspectRatioType CurrentAspectRatio = AspectRatioType::R4_3;
 
 	Pcsx2Config();
 	void LoadSave(SettingsWrapper& wrap);

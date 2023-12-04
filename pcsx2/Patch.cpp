@@ -735,7 +735,7 @@ void Patch::UpdateActivePatches(bool reload_enabled_list, bool verbose, bool ver
 void Patch::ApplyPatchSettingOverrides()
 {
 	// Switch to 16:9 if widescreen patches are enabled, and AR is auto.
-	if (s_override_aspect_ratio.has_value() && EmuConfig.GS.AspectRatio == AspectRatioType::RAuto4_3_3_2)
+	if (s_override_aspect_ratio.has_value() && EmuConfig.GS.AspectRatio == AspectRatioType::R4_3)
 	{
 		// Don't change when reloading settings in the middle of a FMV with switch.
 		if (EmuConfig.CurrentAspectRatio == EmuConfig.GS.AspectRatio)
