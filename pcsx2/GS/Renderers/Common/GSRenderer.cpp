@@ -276,12 +276,12 @@ float GSRenderer::GetModXYOffset()
 }
 
 float GSRenderer::CalculateDisplayAspectRatio(int width, int height, GSPrivRegSet* regs, GSVideoMode video_mode,
-	bool is_interlaced,bool is_pal_optimized)
+	bool is_interlaced, bool is_pal_optimized)
 {
 	float reference_pixel_ar;
-	int divisor; // the MAGH value corresponding to the reference pixel aspect ratio (plus one)
+	int divisor; // the horizontal magnification factor corresponding to the reference pixel aspect ratio
 	const float ntsc_rec_601_par = 10.0f / 11.0f;
-	const float pal_rec_601_par = 59.0f / 54.0f;
+	const float pal_rec_601_par = 128.0f / 117.0f;
 	switch(video_mode)
 	{
 	case GSVideoMode::HDTV_1080I:
@@ -304,8 +304,8 @@ float GSRenderer::CalculateDisplayAspectRatio(int width, int height, GSPrivRegSe
 	default:
 		return 4.0f / 3.0f;
 	}
-	u32 magh = std::max(regs->DISP[0].DISPLAY.MAGH, regs->DISP[1].DISPLAY.MAGH);
-	float pixel_ar = reference_pixel_ar * (magh + 1.0f) / divisor;
+	u32 magnification_factor = std::max(regs->DISP[0].DISPLAY.MAGH, regs->DISP[1].DISPLAY.MAGH) + 1;
+	float pixel_ar = reference_pixel_ar * magnification_factor / divisor;
 	// non-interlaced pixel aspect ratios are half of what they would be in interlaced mode
 	if ((video_mode == GSVideoMode::NTSC || video_mode == GSVideoMode::PAL) && !is_interlaced)
 		pixel_ar /= 2.0f;
